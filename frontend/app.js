@@ -523,6 +523,275 @@ async function confirmDelete() {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   CSV IMPORT  —  all parsing is client-side (zero trust preserved)
+───────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * RFC 4180-compliant CSV parser.
+ * Handles: quoted fields, embedded commas, escaped quotes (""), CRLF/LF.
+ * Returns an array of string arrays (rows × columns).
+ */
+function parseCSV(text) {
+  const rows = [];
+  const s = text.replace(/\r\n?/g, "\n");
+  let i = 0;
+
+  while (i < s.length) {
+    const row = [];
+    // Parse every field on this line
+    while (i < s.length && s[i] !== "\n") {
+      if (s[i] === '"') {
+        // Quoted field — consume until closing unescaped quote
+        i++;
+        let val = "";
+        while (i < s.length) {
+          if (s[i] === '"' && s[i + 1] === '"') { val += '"'; i += 2; }
+          else if (s[i] === '"')                 { i++; break; }
+          else                                   { val += s[i++]; }
+        }
+        row.push(val);
+        if (i < s.length && s[i] === ",") i++;
+      } else {
+        // Unquoted field — read until comma or newline
+        let val = "";
+        while (i < s.length && s[i] !== "," && s[i] !== "\n") val += s[i++];
+        row.push(val);
+        if (i < s.length && s[i] === ",") i++;
+      }
+    }
+    if (i < s.length && s[i] === "\n") i++;
+    // Drop blank rows (e.g. trailing newline)
+    if (!(row.length === 1 && row[0] === "")) rows.push(row);
+  }
+  return rows;
+}
+
+/** Lowercase-and-trim a header cell, stripping any surrounding quotes. */
+const normHeader = s => s.trim().toLowerCase().replace(/^"|"$/g, "");
+
+/**
+ * Given the header row, find the column index for each logical field.
+ * Returns { format, siteIdx, urlIdx, userIdx, pwIdx }.
+ */
+function detectColumns(headerRow) {
+  const h = headerRow.map(normHeader);
+
+  const find = (...names) => { for (const n of names) { const i = h.indexOf(n); if (i !== -1) return i; } return -1; };
+
+  const siteIdx = find("name", "title", "service", "label", "account");
+  const urlIdx  = find("url", "website", "origin_url", "login_uri", "uri", "hostname", "web site");
+  const userIdx = find("username", "user name", "user", "email", "login", "login_username", "account");
+  const pwIdx   = find("password", "pass", "secret", "login_password");
+
+  // Detect browser format from characteristic column patterns
+  let format = "generic";
+  if (h[0] === "name" && h.includes("url") && h.includes("username") && h.includes("password"))
+    format = "chrome";   // Chrome / Edge / Brave
+  else if (h[0] === "url" && h.includes("username") && h.includes("password") && h.includes("httprealm"))
+    format = "firefox";
+  else if (h[0] === "url" && h.includes("username") && h.includes("password"))
+    format = "safari";
+
+  return { format, siteIdx, urlIdx, userIdx, pwIdx };
+}
+
+/** Extract a clean domain from a URL string, or return the raw value on failure. */
+function extractDomain(url) {
+  try {
+    const u = new URL(url.includes("://") ? url : "https://" + url);
+    return u.hostname.replace(/^www\./, "");
+  } catch {
+    return url.split("/")[0] || url;
+  }
+}
+
+/**
+ * Convert parsed CSV rows to an array of vault-entry-shaped objects.
+ * Throws a descriptive Error if required columns are missing.
+ */
+function csvRowsToEntries(rows) {
+  if (rows.length < 2) throw new Error("The file appears to be empty or has no data rows.");
+
+  const { format, siteIdx, urlIdx, userIdx, pwIdx } = detectColumns(rows[0]);
+
+  if (userIdx === -1 || pwIdx === -1) {
+    throw new Error(
+      "Could not find username/password columns. " +
+      "Make sure the file was exported directly from your browser."
+    );
+  }
+
+  const entries = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const pw  = pwIdx !== -1 ? (row[pwIdx] || "").trim() : "";
+    if (!pw) continue;  // skip blank-password rows (e.g. Chrome passkey stubs)
+
+    const rawUrl  = urlIdx  !== -1 ? (row[urlIdx]  || "") : "";
+    const rawUser = userIdx !== -1 ? (row[userIdx] || "").trim() : "";
+
+    let site = siteIdx !== -1 ? (row[siteIdx] || "").trim() : "";
+    if (!site && rawUrl) site = extractDomain(rawUrl);
+    if (!site)           site = "Unknown";
+
+    entries.push({ site, username: rawUser, password: pw, notes: "" });
+  }
+
+  if (!entries.length) throw new Error("No usable password entries found in the file.");
+  return { entries, format };
+}
+
+/* ── Import UI state ── */
+let _importEntries = [];
+
+function resetImportModal() {
+  _importEntries = [];
+  const fileInput = document.getElementById("import-file-input");
+  if (fileInput) fileInput.value = "";
+
+  document.getElementById("import-step-select").classList.remove("hidden");
+  document.getElementById("import-step-preview").classList.add("hidden");
+  document.getElementById("import-back-btn").classList.add("hidden");
+  document.getElementById("import-confirm-btn").classList.add("hidden");
+  document.getElementById("import-parse-error").classList.add("hidden");
+  document.getElementById("import-progress").classList.add("hidden");
+  document.getElementById("import-error").classList.add("hidden");
+
+  const dz = document.getElementById("file-drop-zone");
+  dz.classList.remove("drag-over", "file-selected");
+  document.getElementById("drop-zone-label").textContent = "Click to choose a CSV file";
+}
+
+function openImportModal() {
+  resetImportModal();
+  openModal("import-modal");
+}
+
+function showImportPreview(entries, format) {
+  _importEntries = entries;
+
+  document.getElementById("import-step-select").classList.add("hidden");
+  document.getElementById("import-step-preview").classList.remove("hidden");
+  document.getElementById("import-back-btn").classList.remove("hidden");
+
+  // Format badge
+  const badge = document.getElementById("import-format-badge");
+  const labels = { chrome: "Chrome / Edge / Brave", firefox: "Firefox", safari: "Safari", generic: "Generic CSV" };
+  badge.textContent = labels[format] || "CSV";
+  badge.className   = `bbadge ${format || "generic"}`;
+
+  // Count
+  document.getElementById("import-count-text").textContent =
+    `Found ${entries.length} password${entries.length !== 1 ? "s" : ""}`;
+
+  // Preview table (all rows, scroll container limits height)
+  const tbody = document.getElementById("import-preview-tbody");
+  tbody.innerHTML = "";
+  entries.forEach(e => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td title="${escHtml(e.site)}">${escHtml(e.site)}</td>
+      <td title="${escHtml(e.username)}">${escHtml(e.username)}</td>
+      <td><span class="preview-pw">••••••••</span></td>`;
+    tbody.appendChild(tr);
+  });
+
+  // Confirm button text
+  const btn = document.getElementById("import-confirm-btn");
+  btn.querySelector(".btn-text").textContent =
+    `Import ${entries.length} password${entries.length !== 1 ? "s" : ""}`;
+  btn.classList.remove("hidden");
+}
+
+function handleImportFile(file) {
+  if (!file) return;
+  const errEl = document.getElementById("import-parse-error");
+  errEl.classList.add("hidden");
+
+  if (!file.name.toLowerCase().endsWith(".csv") && file.type !== "text/csv") {
+    errEl.textContent = "Please select a .csv file.";
+    errEl.classList.remove("hidden");
+    return;
+  }
+
+  // Show filename in drop zone
+  const dz = document.getElementById("file-drop-zone");
+  dz.classList.add("file-selected");
+  document.getElementById("drop-zone-label").textContent = file.name;
+
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const rows = parseCSV(ev.target.result);
+      const { entries, format } = csvRowsToEntries(rows);
+      showImportPreview(entries, format);
+    } catch (err) {
+      dz.classList.remove("file-selected");
+      document.getElementById("drop-zone-label").textContent = "Click to choose a CSV file";
+      errEl.textContent = err.message;
+      errEl.classList.remove("hidden");
+    }
+  };
+  reader.onerror = () => {
+    errEl.textContent = "Could not read the file.";
+    errEl.classList.remove("hidden");
+  };
+  reader.readAsText(file, "utf-8");
+}
+
+async function runImport() {
+  const entries = _importEntries;
+  if (!entries.length) return;
+
+  const confirmBtn   = document.getElementById("import-confirm-btn");
+  const backBtn      = document.getElementById("import-back-btn");
+  const progressEl   = document.getElementById("import-progress");
+  const progressFill = document.getElementById("import-progress-fill");
+  const progressText = document.getElementById("import-progress-text");
+  const errorEl      = document.getElementById("import-error");
+
+  setLoading(confirmBtn, true);
+  backBtn.disabled = true;
+  progressEl.classList.remove("hidden");
+  errorEl.classList.add("hidden");
+
+  let done = 0, failed = 0;
+  const total = entries.length;
+
+  for (const entry of entries) {
+    try {
+      const encrypted_data = await encryptEntry(entry, state.encKey);
+      const { ok, data }   = await apiCall("POST", "/api/vault", { encrypted_data });
+      if (ok) {
+        state.entries.unshift({
+          ...entry,
+          id: data.id,
+          created_at:  new Date().toISOString(),
+          updated_at:  new Date().toISOString(),
+        });
+        done++;
+      } else {
+        failed++;
+      }
+    } catch {
+      failed++;
+    }
+
+    const pct = Math.round(((done + failed) / total) * 100);
+    progressFill.style.width = `${pct}%`;
+    progressText.textContent = `Encrypting & saving ${done + failed} / ${total}…`;
+  }
+
+  applySearch();
+  closeModal("import-modal");
+
+  const msg = failed === 0
+    ? `Imported ${done} password${done !== 1 ? "s" : ""} successfully`
+    : `Imported ${done} passwords — ${failed} failed`;
+  showToast(msg, failed ? 4000 : 2500);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
    EVENT WIRING
 ───────────────────────────────────────────────────────────────────────────── */
 
@@ -661,10 +930,38 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("delete-confirm").addEventListener("click", confirmDelete);
 
   /* ── Close modals on overlay click ── */
-  ["entry-modal", "delete-modal"].forEach(id => {
+  ["entry-modal", "delete-modal", "import-modal"].forEach(id => {
     document.getElementById(id).addEventListener("click", e => {
       if (e.target === e.currentTarget) closeModal(id);
     });
+  });
+
+  /* ── Import modal ── */
+  document.getElementById("import-btn").addEventListener("click", openImportModal);
+
+  document.getElementById("import-modal-close").addEventListener("click", () => closeModal("import-modal"));
+  document.getElementById("import-cancel").addEventListener("click", () => closeModal("import-modal"));
+
+  document.getElementById("import-back-btn").addEventListener("click", () => {
+    resetImportModal();  // go back to file-pick step
+  });
+
+  document.getElementById("import-confirm-btn").addEventListener("click", runImport);
+
+  /* File input change */
+  document.getElementById("import-file-input").addEventListener("change", e => {
+    handleImportFile(e.target.files[0]);
+  });
+
+  /* Drag-and-drop on the drop zone */
+  const dropZone = document.getElementById("file-drop-zone");
+  dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("drag-over"); });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+  dropZone.addEventListener("drop", e => {
+    e.preventDefault();
+    dropZone.classList.remove("drag-over");
+    const file = e.dataTransfer?.files?.[0];
+    if (file) handleImportFile(file);
   });
 
   /* ── Entry list event delegation ── */
@@ -721,8 +1018,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("keydown", e => {
     // Esc closes open modals
     if (e.key === "Escape") {
-      if (!document.getElementById("entry-modal").classList.contains("hidden")) closeModal("entry-modal");
+      if (!document.getElementById("entry-modal").classList.contains("hidden"))  closeModal("entry-modal");
       if (!document.getElementById("delete-modal").classList.contains("hidden")) closeModal("delete-modal");
+      if (!document.getElementById("import-modal").classList.contains("hidden")) closeModal("import-modal");
     }
     // Ctrl+F / Cmd+F focuses search when on vault screen
     if ((e.ctrlKey || e.metaKey) && e.key === "f") {
