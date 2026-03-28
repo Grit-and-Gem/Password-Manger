@@ -724,6 +724,17 @@ textarea { resize: vertical; }
 .import-table tr:last-child td { border-bottom: none; }
 .import-table tr:hover td { background: var(--surface-2); }
 .preview-pw { color: var(--text-faint); letter-spacing: 0.1em; font-family: monospace; }
+.import-table tr.import-dup td { color: var(--text-faint); }
+.dup-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  padding: 0.1em 0.4em;
+  border-radius: 3px;
+  background: var(--surface-3);
+  color: var(--text-muted);
+  margin-left: 0.35em;
+  vertical-align: middle;
+}
 
 /* Import progress */
 .import-progress {

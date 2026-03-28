@@ -644,6 +644,15 @@ function csvRowsToEntries(rows) {
 /* ── Import UI state ── */
 let _importEntries = [];
 
+/** Returns true if an entry with the same site, username, and password already exists in the vault. */
+function isDuplicate(entry) {
+  return state.entries.some(e =>
+    e.site.toLowerCase()     === entry.site.toLowerCase() &&
+    e.username.toLowerCase() === entry.username.toLowerCase() &&
+    e.password               === entry.password
+  );
+}
+
 function resetImportModal() {
   _importEntries = [];
   const fileInput = document.getElementById("import-file-input");
@@ -668,6 +677,8 @@ function openImportModal() {
 }
 
 function showImportPreview(entries, format) {
+  const dupCount = entries.filter(isDuplicate).length;
+  const newCount = entries.length - dupCount;
   _importEntries = entries;
 
   document.getElementById("import-step-select").classList.add("hidden");
@@ -680,26 +691,33 @@ function showImportPreview(entries, format) {
   badge.textContent = labels[format] || "CSV";
   badge.className   = `bbadge ${format || "generic"}`;
 
-  // Count
-  document.getElementById("import-count-text").textContent =
-    `Found ${entries.length} password${entries.length !== 1 ? "s" : ""}`;
+  // Count — show duplicate breakdown when relevant
+  let countText = `Found ${entries.length} password${entries.length !== 1 ? "s" : ""}`;
+  if (dupCount > 0) {
+    countText += ` — ${newCount} new, ${dupCount} duplicate${dupCount !== 1 ? "s" : ""}`;
+  }
+  document.getElementById("import-count-text").textContent = countText;
 
   // Preview table (all rows, scroll container limits height)
   const tbody = document.getElementById("import-preview-tbody");
   tbody.innerHTML = "";
   entries.forEach(e => {
+    const dup = isDuplicate(e);
     const tr = document.createElement("tr");
+    if (dup) tr.classList.add("import-dup");
     tr.innerHTML = `
-      <td title="${escHtml(e.site)}">${escHtml(e.site)}</td>
+      <td title="${escHtml(e.site)}">${escHtml(e.site)}${dup ? ' <span class="dup-badge">duplicate</span>' : ""}</td>
       <td title="${escHtml(e.username)}">${escHtml(e.username)}</td>
       <td><span class="preview-pw">••••••••</span></td>`;
     tbody.appendChild(tr);
   });
 
-  // Confirm button text
+  // Confirm button text — reflect only new entries to be imported
   const btn = document.getElementById("import-confirm-btn");
   btn.querySelector(".btn-text").textContent =
-    `Import ${entries.length} password${entries.length !== 1 ? "s" : ""}`;
+    newCount > 0
+      ? `Import ${newCount} new password${newCount !== 1 ? "s" : ""}`
+      : "Nothing new to import";
   btn.classList.remove("hidden");
 }
 
@@ -740,8 +758,16 @@ function handleImportFile(file) {
 }
 
 async function runImport() {
-  const entries = _importEntries;
+  const entries  = _importEntries;
   if (!entries.length) return;
+
+  const toImport = entries.filter(e => !isDuplicate(e));
+
+  if (!toImport.length) {
+    closeModal("import-modal");
+    showToast("All entries already exist in your vault", 3000);
+    return;
+  }
 
   const confirmBtn   = document.getElementById("import-confirm-btn");
   const backBtn      = document.getElementById("import-back-btn");
@@ -756,9 +782,9 @@ async function runImport() {
   errorEl.classList.add("hidden");
 
   let done = 0, failed = 0;
-  const total = entries.length;
+  const total = toImport.length;
 
-  for (const entry of entries) {
+  for (const entry of toImport) {
     try {
       const encrypted_data = await encryptEntry(entry, state.encKey);
       const { ok, data }   = await apiCall("POST", "/api/vault", { encrypted_data });
