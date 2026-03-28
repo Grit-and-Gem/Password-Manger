@@ -603,6 +603,151 @@ textarea { resize: vertical; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
 
+/* ── Import modal ───────────────────────────────────────── */
+.modal-import { max-width: 580px; }
+
+.import-step { padding: 1.2rem 1.4rem 0; }
+
+.import-intro {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+}
+
+/* Browser guide */
+.browser-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.2rem;
+}
+.browser-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+}
+.browser-path { color: var(--text-faint); }
+
+/* Browser badges */
+.bbadge {
+  display: inline-block;
+  padding: 0.18rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 130px;
+  text-align: center;
+}
+.bbadge.chrome  { background: rgba(66,133,244,0.15); color: #6ba3f5; border: 1px solid rgba(66,133,244,0.25); }
+.bbadge.firefox { background: rgba(255,100,0,0.15);  color: #ff8040; border: 1px solid rgba(255,100,0,0.25); }
+.bbadge.safari  { background: rgba(0,190,140,0.15);  color: #00c48c; border: 1px solid rgba(0,190,140,0.25); }
+.bbadge.generic { background: rgba(160,148,136,0.15); color: var(--text-muted); border: 1px solid var(--border); }
+
+/* File drop zone */
+.file-drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 2rem 1rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: border-color var(--transition), background var(--transition), color var(--transition);
+  text-align: center;
+}
+.file-drop-zone input[type="file"] { display: none; }
+.file-drop-zone svg {
+  width: 40px; height: 40px;
+  stroke: currentColor;
+  opacity: 0.45;
+  transition: opacity var(--transition);
+}
+.file-drop-zone:hover,
+.file-drop-zone.drag-over {
+  border-color: var(--accent);
+  background: rgba(201,100,66,0.06);
+  color: var(--text);
+}
+.file-drop-zone:hover svg,
+.file-drop-zone.drag-over svg { opacity: 0.85; }
+.file-drop-zone.file-selected { border-color: var(--success); color: var(--success); }
+.file-drop-zone.file-selected svg { opacity: 0.7; }
+#drop-zone-label { font-size: 0.88rem; font-weight: 500; }
+.drop-hint { font-size: 0.75rem; color: var(--text-faint); }
+
+/* Import preview */
+.import-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+.import-count { font-size: 0.9rem; color: var(--text-muted); }
+
+.import-table-wrap {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.85rem;
+}
+.import-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.import-table th {
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-align: left;
+  padding: 0.45rem 0.75rem;
+  position: sticky;
+  top: 0;
+  border-bottom: 1px solid var(--border);
+}
+.import-table td {
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-table tr:last-child td { border-bottom: none; }
+.import-table tr:hover td { background: var(--surface-2); }
+.preview-pw { color: var(--text-faint); letter-spacing: 0.1em; font-family: monospace; }
+
+/* Import progress */
+.import-progress {
+  margin-bottom: 0.5rem;
+}
+.import-progress-track {
+  height: 4px;
+  background: var(--surface-3);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 0.4rem;
+}
+#import-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.15s ease;
+}
+#import-progress-text {
+  font-size: 0.78rem;
+  color: var(--text-faint);
+}
+
 /* ── Responsive ─────────────────────────────────────────── */
 @media (max-width: 640px) {
   .navbar { flex-wrap: wrap; gap: 0.6rem; }
