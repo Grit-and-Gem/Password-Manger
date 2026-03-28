@@ -14,9 +14,10 @@
   <div id="auth-screen" class="screen active">
     <div class="auth-card">
       <div class="auth-logo">
-        <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="8" y="20" width="32" height="24" rx="4" fill="#6c63ff"/>
-          <path d="M16 20v-6a8 8 0 0116 0v6" stroke="#6c63ff" stroke-width="3" stroke-linecap="round"/>
+        <!-- accent color applied via CSS currentColor -->
+        <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" style="color:var(--accent)">
+          <rect x="8" y="20" width="32" height="24" rx="4" fill="currentColor"/>
+          <path d="M16 20v-6a8 8 0 0116 0v6" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
           <circle cx="24" cy="32" r="3" fill="white"/>
           <rect x="23" y="33" width="2" height="4" rx="1" fill="white"/>
         </svg>
@@ -97,12 +98,12 @@
   ════════════════════════════════════════════ -->
   <div id="vault-screen" class="screen">
 
-    <!-- Navbar -->
+    <!-- Navbar — flex-shrink:0 keeps it fixed at top -->
     <nav class="navbar">
       <div class="nav-brand">
-        <svg viewBox="0 0 48 48" fill="none">
-          <rect x="8" y="20" width="32" height="24" rx="4" fill="#6c63ff"/>
-          <path d="M16 20v-6a8 8 0 0116 0v6" stroke="#6c63ff" stroke-width="3" stroke-linecap="round"/>
+        <svg viewBox="0 0 48 48" fill="none" style="color:var(--accent)">
+          <rect x="8" y="20" width="32" height="24" rx="4" fill="currentColor"/>
+          <path d="M16 20v-6a8 8 0 0116 0v6" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
           <circle cx="24" cy="32" r="3" fill="white"/>
           <rect x="23" y="33" width="2" height="4" rx="1" fill="white"/>
         </svg>
@@ -126,37 +127,38 @@
       </div>
     </nav>
 
-    <!-- Stats bar -->
-    <div class="vault-stats">
-      <span id="entry-count">0 passwords</span>
-      <span class="enc-badge">AES-256-GCM encrypted</span>
+    <!-- Scrollable body: stats bar + password list -->
+    <div class="vault-body">
+      <div class="vault-stats">
+        <span id="entry-count">0 passwords</span>
+        <span class="enc-badge">AES-256-GCM encrypted</span>
+      </div>
+
+      <main class="vault-main">
+        <div id="entry-list" class="entry-list"></div>
+
+        <!-- Empty state -->
+        <div id="empty-state" class="empty-state hidden">
+          <svg viewBox="0 0 80 80" fill="none" style="color:var(--accent)">
+            <rect x="16" y="36" width="48" height="36" rx="6" fill="var(--surface-2)"/>
+            <path d="M28 36v-10a12 12 0 0124 0v10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+            <circle cx="40" cy="54" r="5" fill="currentColor" opacity="0.5"/>
+          </svg>
+          <h3>Your vault is empty</h3>
+          <p>Click <strong>Add Password</strong> to store your first credential.</p>
+        </div>
+
+        <!-- Search empty state -->
+        <div id="search-empty" class="empty-state hidden">
+          <svg viewBox="0 0 80 80" fill="none" style="color:var(--accent)">
+            <circle cx="34" cy="34" r="20" stroke="currentColor" stroke-width="3" opacity="0.5"/>
+            <line x1="49" y1="49" x2="66" y2="66" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+          </svg>
+          <h3>No results found</h3>
+          <p>Try a different search term.</p>
+        </div>
+      </main>
     </div>
-
-    <!-- Password list -->
-    <main class="vault-main">
-      <div id="entry-list" class="entry-list"></div>
-
-      <!-- Empty state -->
-      <div id="empty-state" class="empty-state hidden">
-        <svg viewBox="0 0 80 80" fill="none">
-          <rect x="16" y="36" width="48" height="36" rx="6" fill="#1e1e3a"/>
-          <path d="M28 36v-10a12 12 0 0124 0v10" stroke="#6c63ff" stroke-width="3" stroke-linecap="round"/>
-          <circle cx="40" cy="54" r="5" fill="#6c63ff" opacity="0.5"/>
-        </svg>
-        <h3>Your vault is empty</h3>
-        <p>Click <strong>Add Password</strong> to store your first credential.</p>
-      </div>
-
-      <!-- Search empty state -->
-      <div id="search-empty" class="empty-state hidden">
-        <svg viewBox="0 0 80 80" fill="none">
-          <circle cx="34" cy="34" r="20" stroke="#6c63ff" stroke-width="3" opacity="0.5"/>
-          <line x1="49" y1="49" x2="66" y2="66" stroke="#6c63ff" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
-        </svg>
-        <h3>No results found</h3>
-        <p>Try a different search term.</p>
-      </div>
-    </main>
   </div>
 
   <!-- ════════════════════════════════════════════
