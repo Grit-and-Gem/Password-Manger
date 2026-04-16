@@ -193,9 +193,19 @@ function passwordStrength(pw) {
  */
 function generatePassword(length = 20) {
   const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+[]{}";
-  const arr = new Uint8Array(length);
-  crypto.getRandomValues(arr);
-  return Array.from(arr, b => charset[b % charset.length]).join("");
+  const limit = 256 - (256 % charset.length); // reject bytes >= limit to eliminate modulo bias
+  const result = [];
+  while (result.length < length) {
+    const buf = new Uint8Array(length - result.length + 16);
+    crypto.getRandomValues(buf);
+    for (const b of buf) {
+      if (b < limit) {
+        result.push(charset[b % charset.length]);
+        if (result.length === length) break;
+      }
+    }
+  }
+  return result.join("");
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -653,6 +663,11 @@ function isDuplicate(entry) {
   );
 }
 
+/** Build a dedup key for an entry (used to detect within-CSV duplicates). */
+function entryKey(e) {
+  return `${e.site.toLowerCase()}|${e.username.toLowerCase()}|${e.password}`;
+}
+
 function resetImportModal() {
   _importEntries = [];
   const fileInput = document.getElementById("import-file-input");
@@ -677,7 +692,15 @@ function openImportModal() {
 }
 
 function showImportPreview(entries, format) {
-  const dupCount = entries.filter(isDuplicate).length;
+  // Detect duplicates against both the vault AND within the CSV itself
+  const seen = new Set();
+  let dupCount = 0;
+  const dupFlags = entries.map(e => {
+    const key = entryKey(e);
+    if (isDuplicate(e) || seen.has(key)) { dupCount++; return true; }
+    seen.add(key);
+    return false;
+  });
   const newCount = entries.length - dupCount;
   _importEntries = entries;
 
@@ -701,8 +724,8 @@ function showImportPreview(entries, format) {
   // Preview table (all rows, scroll container limits height)
   const tbody = document.getElementById("import-preview-tbody");
   tbody.innerHTML = "";
-  entries.forEach(e => {
-    const dup = isDuplicate(e);
+  entries.forEach((e, i) => {
+    const dup = dupFlags[i];
     const tr = document.createElement("tr");
     if (dup) tr.classList.add("import-dup");
     tr.innerHTML = `
@@ -761,7 +784,14 @@ async function runImport() {
   const entries  = _importEntries;
   if (!entries.length) return;
 
-  const toImport = entries.filter(e => !isDuplicate(e));
+  // Deduplicate against vault AND within the CSV itself
+  const seen = new Set();
+  const toImport = entries.filter(e => {
+    const key = entryKey(e);
+    if (isDuplicate(e) || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
   if (!toImport.length) {
     closeModal("import-modal");
