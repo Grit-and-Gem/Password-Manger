@@ -654,18 +654,16 @@ function csvRowsToEntries(rows) {
 /* ── Import UI state ── */
 let _importEntries = [];
 
-/** Returns true if an entry with the same site, username, and password already exists in the vault. */
-function isDuplicate(entry) {
-  return state.entries.some(e =>
-    e.site.toLowerCase()     === entry.site.toLowerCase() &&
-    e.username.toLowerCase() === entry.username.toLowerCase() &&
-    e.password               === entry.password
-  );
-}
-
-/** Build a dedup key for an entry (used to detect within-CSV duplicates). */
+/** Build a dedup key for an entry. */
 function entryKey(e) {
   return `${e.site.toLowerCase()}|${e.username.toLowerCase()}|${e.password}`;
+}
+
+/** Build a Set of keys from the current vault for O(1) duplicate lookups. */
+function buildVaultKeySet() {
+  const s = new Set();
+  for (const e of state.entries) s.add(entryKey(e));
+  return s;
 }
 
 function resetImportModal() {
@@ -692,12 +690,13 @@ function openImportModal() {
 }
 
 function showImportPreview(entries, format) {
-  // Detect duplicates against both the vault AND within the CSV itself
+  // Detect duplicates against both the vault AND within the CSV itself (O(n))
+  const vaultKeys = buildVaultKeySet();
   const seen = new Set();
   let dupCount = 0;
   const dupFlags = entries.map(e => {
     const key = entryKey(e);
-    if (isDuplicate(e) || seen.has(key)) { dupCount++; return true; }
+    if (vaultKeys.has(key) || seen.has(key)) { dupCount++; return true; }
     seen.add(key);
     return false;
   });
@@ -784,11 +783,12 @@ async function runImport() {
   const entries  = _importEntries;
   if (!entries.length) return;
 
-  // Deduplicate against vault AND within the CSV itself
+  // Deduplicate against vault AND within the CSV itself (O(n))
+  const vaultKeys = buildVaultKeySet();
   const seen = new Set();
   const toImport = entries.filter(e => {
     const key = entryKey(e);
-    if (isDuplicate(e) || seen.has(key)) return false;
+    if (vaultKeys.has(key) || seen.has(key)) return false;
     seen.add(key);
     return true;
   });
